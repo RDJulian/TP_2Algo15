@@ -1,3 +1,11 @@
+def archivos_local():
+    pass
+
+
+def archivos_remoto():
+    pass
+
+
 def main() -> None:
     selector = str()
     while not selector == "8":
