@@ -62,21 +62,23 @@ def archivos_local() -> None:
                 path = os.path.join(path, selector)
 
 
+def ver_archivos_remoto(id_carpeta: str) -> None:
+    query = f"parents = '{id_carpeta}'"
+    field = "files(id, name, mimeType)"
+    respuesta = (
+        service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
+    )
+    for archivo in respuesta.get("files"):
+        print(archivo.get("name"))
+    return respuesta
+
+
 def archivos_remoto() -> None:
     id_carpeta = ROOT_DRIVE
     selector = str()
     while not selector == "salir":
         clear()
-        query = f"parents = '{id_carpeta}'"
-        field = "files(id, name, mimeType)"
-        respuesta = (
-            service_drive.obtener_servicio()
-            .files()
-            .list(q=query, fields=field)
-            .execute()
-        )
-        for archivo in respuesta.get("files"):
-            print(archivo.get("name"))
+        respuesta = ver_archivos_remoto(id_carpeta)
         selector = input(
             """
         Ingrese la carpeta a la que quiera ingresar,
@@ -98,12 +100,11 @@ def archivos_remoto() -> None:
 
 
 
-
 def elegir_archivo_local()-> str:
 
     directorio_origen = os.getcwd()
     path = os.getcwd()
-    path_archivo = str
+    path_archivo = str()
     entrar = True
     while entrar:
         ver_archivos(path)
@@ -122,26 +123,16 @@ def elegir_archivo_local()-> str:
             else:
                 print("El nombre elegido no es una carpeta, elige nuevamente")
         else:
-            if directorio_origen in os.path.dirname(path):
-                path = os.path.dirname(path)
-            else:
-                print("No se puede volver atras")
+             path = os.path.dirname(path)
     return path_archivo
 
 
 def elegir_carpeta_drive()-> str:
     id_carpeta = ROOT_DRIVE
-    id_carpeta_subir = str
+    id_carpeta_subir = str()
     seguir = True
     while seguir:
-        clear()
-        query = f"parents = '{id_carpeta}'"
-        field = "files(id, name, mimeType)"
-        respuesta = (
-            service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
-        )
-        for archivo in respuesta.get("files"):
-            print(archivo.get("name"))
+        respuesta = ver_archivos_remoto(id_carpeta))
         opcion = input("1. Elegir una carpeta/ 2. Entrar a una carpeta/ 3. Volver al directorio principal: " )
         if opcion == "1":
             carpeta = input("Ingrese el nombre de la carpeta: ")
