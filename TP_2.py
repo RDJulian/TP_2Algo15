@@ -1,6 +1,7 @@
 import os
 import service_drive
 import service_gmail
+from googleapiclient.http import MediaFileUpload
 
 EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar
 
@@ -80,7 +81,7 @@ def ver_archivos_remoto(idCarpeta: str) -> None:
     return respuesta
 
 
-def archivos_remoto() -> None:  # ¿Cual es el punto de esta funcion? crear_carpeta_archivo hace lo mismo
+def archivos_remoto() -> None:  # ¿Cual es el punto de esta funcion? crear_archivo hace lo mismo
     idCarpeta = ROOT_DRIVE
     selector = str()
     while not selector == "salir":
@@ -137,8 +138,14 @@ def anidar_carpetas_remoto(
     return idCarpeta
 
 
-def crear_archivo_remoto():
-    pass
+def subir_archivo(path: str, nombre, idCarpeta: str) -> None:
+    meta_archivo = {"name": nombre, "parents": [idCarpeta]}
+
+    media = MediaFileUpload(path)
+    service_drive.obtener_servicio().files().create(
+        body=meta_archivo, media_body=media, fields="id"
+    ).execute()
+    print(f"El archivo {nombre} se subió correctamente")
 
 
 def crear_archivo():  # Muy parecido a archivos_remoto
@@ -165,17 +172,26 @@ def crear_archivo():  # Muy parecido a archivos_remoto
                 os.mkdir(os.path.join(path, nombre))
                 idCarpeta = anidar_carpetas_remoto(path)
                 crear_carpeta_remota(nombre, idCarpeta)
+
             if opcion == "2":
                 nombre = input("Ingrese el nombre del archivo: ")
+
                 print("Extensiones validas:")
                 for extension in range(len(EXTENSIONES_VALIDAS)):
                     print(EXTENSIONES_VALIDAS[extension])
                 extension = input("Ingrese la extension del archivo: ")
                 while not extension in EXTENSIONES_VALIDAS:
-                    extension = input("Ingrese una extension valida")
-                nombreExtension = f"{os.path.join(path,nombre)}.{extension}"
-                with open(nombreExtension, "w") as _:
-                    pass  # FALTA SUBIR EL ARCHIVO
+                    extension = input("Ingrese una extension valida: ")
+
+                pathArchivo = f"{os.path.join(path,nombre)}.{extension}"
+                nombreExtension = f"{nombre}.{extension}"
+
+                with open(pathArchivo, "w") as _:
+                    pass
+
+                idCarpeta = anidar_carpetas_remoto(path)
+                subir_archivo(pathArchivo, nombreExtension, idCarpeta)
+
         else:
             if os.path.isdir(os.path.join(path, selector)):
                 path = os.path.join(path, selector)
