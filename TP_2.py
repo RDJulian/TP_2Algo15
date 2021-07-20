@@ -1,7 +1,8 @@
 import os
 import service_drive
 from googleapiclient.http import MediaFileUpload
-
+import io
+from googleapiclient.http import MediaIoBaseDownload
 def clear() -> None:
     if os.name == "nt":
         os.system("cls")
@@ -164,7 +165,23 @@ def subir_archivo()-> None:
                                      media_body=media,fields='id').execute()
     print(f"El archivo {nombre} se subió correctamente")
 
+def descargar(file_id, file_name, path):
 
+    request = obtener_servicio().files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fd = fh, request = request)
+
+
+    done= False
+    while not done:
+        status, done = downloader.next_chunk()
+        print(("download progress {0}").format(status.progress()*100))
+    fh.seek(0)
+
+    with open (os.path.join(path, file_name), "wb") as f:
+        f.write(fh.read())
+        f.close()
+    
 def main() -> None:
     selector = str()
     while not selector == "8":
