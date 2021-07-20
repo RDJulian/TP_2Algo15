@@ -10,19 +10,19 @@ def clear() -> None:
         os.system("clear")
 
 
-def crear_carpeta_remota(nombre: str, id_carpeta: str) -> str:
-    meta_carpeta = {
+def crear_carpeta_remota(nombre: str, idCarpeta: str) -> str:
+    metaCarpeta = {
         "name": f"{nombre}",
         "mimeType": "application/vnd.google-apps.folder",
-        "parents": [id_carpeta],
+        "parents": [idCarpeta],
     }
     carpeta = (
         service_drive.obtener_servicio()
         .files()
-        .create(body=meta_carpeta, fields="id")
+        .create(body=metaCarpeta, fields="id")
         .execute()
     )
-    return carpeta.get("id")  # Capaz es mejor retornar toda la respuesta
+    return carpeta.get("id")  # Quiza es mejor retornar toda la respuesta
 
 
 def root_drive() -> str:  # Esta funcion crea una carpeta tipo root para todos los archivos del trabajo
@@ -67,8 +67,8 @@ def archivos_local() -> None:
                 path = os.path.join(path, selector)
 
 
-def ver_archivos_remoto(id_carpeta: str) -> None:
-    query = f"parents = '{id_carpeta}'"
+def ver_archivos_remoto(idCarpeta: str) -> None:
+    query = f"parents = '{idCarpeta}'"
     field = "files(id, name, mimeType)"
     respuesta = (
         service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
@@ -79,11 +79,11 @@ def ver_archivos_remoto(id_carpeta: str) -> None:
 
 
 def archivos_remoto() -> None:
-    id_carpeta = ROOT_DRIVE
+    idCarpeta = ROOT_DRIVE
     selector = str()
     while not selector == "salir":
         clear()
-        respuesta = ver_archivos_remoto(id_carpeta)
+        respuesta = ver_archivos_remoto(idCarpeta)
         selector = input(
             """
         Ingrese la carpeta a la que quiera ingresar,
@@ -91,17 +91,17 @@ def archivos_remoto() -> None:
         salir para volver al menu principal: """
         )
         if selector == "root":
-            id_carpeta = ROOT_DRIVE
+            idCarpeta = ROOT_DRIVE
         else:
             for archivo in respuesta.get("files"):
                 if (
                     archivo.get("name") == selector
                     and archivo.get("mimeType") == "application/vnd.google-apps.folder"
                 ):
-                    id_carpeta = archivo.get("id")
+                    idCarpeta = archivo.get("id")
 
 
-def carpetas_anidadas_remoto(
+def anidar_carpetas_remoto(
     path: str,
 ) -> str:  # Crea carpetas automaticamente si no existen en Drive
     anidacion = []
@@ -109,9 +109,9 @@ def carpetas_anidadas_remoto(
         anidacion.insert(0, os.path.split(path)[1])
         path = os.path.split(path)[0]
 
-    id_carpeta = ROOT_DRIVE
+    idCarpeta = ROOT_DRIVE
     while not anidacion == []:
-        query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{id_carpeta}'"
+        query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{idCarpeta}'"
         field = "files(id, name)"
         respuesta = (
             service_drive.obtener_servicio()
@@ -120,19 +120,19 @@ def carpetas_anidadas_remoto(
             .execute()
         )
 
-        idCarpetaAux = str()
+        idCarpetaAux = str()  # Variable auxiliar
         for carpeta in respuesta.get("files"):
             if carpeta.get("name") == anidacion[0]:
                 idCarpetaAux = carpeta.get("id")
 
         if idCarpetaAux != "":
-            id_carpeta = idCarpetaAux
+            idCarpeta = idCarpetaAux
             anidacion.pop(0)
         else:
-            id_carpeta = crear_carpeta_remota(anidacion[0], id_carpeta)
+            idCarpeta = crear_carpeta_remota(anidacion[0], idCarpeta)
             anidacion.pop(0)
 
-    return id_carpeta
+    return idCarpeta
 
 
 def crear_carpeta():  # Muy parecido a ver_archivos
@@ -141,7 +141,7 @@ def crear_carpeta():  # Muy parecido a ver_archivos
     while not (selector == "salir" or selector == "crear"):
         clear()
         ver_archivos(path)
-        selector = input(
+        selector = input(  # Esto se podria mejorar para que sea mas intuitivo
             """
         Ingrese la carpeta a donde quiera moverse,
         crear para crear la carpeta en este directorio,
@@ -153,8 +153,8 @@ def crear_carpeta():  # Muy parecido a ver_archivos
         elif selector == "crear":
             nombre = input("\nIngrese el nombre de la carpeta: ")
             os.mkdir(os.path.join(path, nombre))
-            id = carpetas_anidadas_remoto(path)
-            crear_carpeta_remota(nombre, id)
+            idCarpeta = anidar_carpetas_remoto(path)
+            crear_carpeta_remota(nombre, idCarpeta)
         else:
             if os.path.isdir(os.path.join(path, selector)):
                 path = os.path.join(path, selector)
