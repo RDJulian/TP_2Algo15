@@ -2,6 +2,8 @@ import os
 import service_drive
 import service_gmail
 
+EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar
+
 
 def clear() -> None:
     if os.name == "nt":
@@ -78,7 +80,7 @@ def ver_archivos_remoto(idCarpeta: str) -> None:
     return respuesta
 
 
-def archivos_remoto() -> None:
+def archivos_remoto() -> None:  # ¿Cual es el punto de esta funcion? crear_carpeta_archivo hace lo mismo
     idCarpeta = ROOT_DRIVE
     selector = str()
     while not selector == "salir":
@@ -135,33 +137,48 @@ def anidar_carpetas_remoto(
     return idCarpeta
 
 
-def crear_carpeta():  # Muy parecido a ver_archivos
+def crear_archivo_remoto():
+    pass
+
+
+def crear_archivo():  # Muy parecido a archivos_remoto
     selector = str()
     path = os.getcwd()
-    while not (selector == "salir" or selector == "crear"):
+    while not selector == "salir":
         clear()
         ver_archivos(path)
         selector = input(  # Esto se podria mejorar para que sea mas intuitivo
             """
         Ingrese la carpeta a donde quiera moverse,
-        crear para crear la carpeta en este directorio,
+        crear para crear el archivo en este directorio,
         atras para volver al directorio anterior,
         salir para volver al menu principal: """
         )
         if selector == "atras":
             path = os.path.dirname(path)
         elif selector == "crear":
-            nombre = input("\nIngrese el nombre de la carpeta: ")
-            os.mkdir(os.path.join(path, nombre))
-            idCarpeta = anidar_carpetas_remoto(path)
-            crear_carpeta_remota(nombre, idCarpeta)
+            opcion = input(
+                "\nIngrese 1 para crear una carpeta, 2 para crear un archivo: "
+            )
+            if opcion == "1":
+                nombre = input("Ingrese el nombre de la carpeta: ")
+                os.mkdir(os.path.join(path, nombre))
+                idCarpeta = anidar_carpetas_remoto(path)
+                crear_carpeta_remota(nombre, idCarpeta)
+            if opcion == "2":
+                nombre = input("Ingrese el nombre del archivo: ")
+                print("Extensiones validas:")
+                for extension in range(len(EXTENSIONES_VALIDAS)):
+                    print(EXTENSIONES_VALIDAS[extension])
+                extension = input("Ingrese la extension del archivo: ")
+                while not extension in EXTENSIONES_VALIDAS:
+                    extension = input("Ingrese una extension valida")
+                nombreExtension = f"{os.path.join(path,nombre)}.{extension}"
+                with open(nombreExtension, "w") as _:
+                    pass  # FALTA SUBIR EL ARCHIVO
         else:
             if os.path.isdir(os.path.join(path, selector)):
                 path = os.path.join(path, selector)
-
-
-def crear_archivo():
-    pass
 
 
 def main() -> None:
@@ -187,13 +204,7 @@ def main() -> None:
             if opcion == "2":
                 archivos_remoto()
         if selector == "2":
-            opcion = input(
-                "Ingrese 1 para crear una carpeta, 2 para crear un archivo: "
-            )
-            if opcion == "1":
-                crear_carpeta()
-            if opcion == "2":
-                crear_archivo()
+            crear_archivo()
         if selector == "3":
             pass
         if selector == "4":
