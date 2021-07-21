@@ -99,20 +99,17 @@ def archivos_remoto() -> None:
 
 
 
-
-
-def elegir_archivo_local()-> str:
-
-    directorio_origen = os.getcwd()
+def elegir_archivo_local()-> tuple:
     path = os.getcwd()
+    nombre_archivo = str()
     path_archivo = str()
     entrar = True
     while entrar:
         ver_archivos(path)
         opcion = input("1. Elegir un archivo/ 2. Entrar a una carpeta/ 3. Atras: ")
         if opcion == "1":
-            archivo = input("Elige el nombre del archivo: ")
-            path_archivo = os.path.join(path, archivo)
+            nombre_archivo = input("Elige el nombre del archivo: ")
+            path_archivo = os.path.join(path, nombre_archivo)
             if os.path.isfile(path_archivo) == True:
                 entrar = False
             else:
@@ -125,7 +122,7 @@ def elegir_archivo_local()-> str:
                 print("El nombre elegido no es una carpeta, elige nuevamente")
         else:
              path = os.path.dirname(path)
-    return path_archivo
+    return (path_archivo, nombre_archivo)
 
 
 def elegir_carpeta_drive()-> str:
@@ -133,7 +130,7 @@ def elegir_carpeta_drive()-> str:
     id_carpeta_subir = str()
     seguir = True
     while seguir:
-        respuesta = ver_archivos_remoto(id_carpeta))
+        respuesta = ver_archivos_remoto(id_carpeta)
         opcion = input("1. Elegir una carpeta/ 2. Entrar a una carpeta/ 3. Volver al directorio principal: " )
         if opcion == "1":
             carpeta = input("Ingrese el nombre de la carpeta: ")
@@ -155,33 +152,99 @@ def elegir_carpeta_drive()-> str:
     return id_carpeta_subir
 
 
-def subir_archivo()-> None:
-    nombre = elegir_archivo_local()
-    carpeta_id = elegir_carpeta_drive()
-    file_metadata = {'name': nombre, "parents": [carpeta_id]}
+def subir_archivo(path: str, nombre: str, idCarpeta: str) -> None:
+    meta_archivo = {"name": nombre, "parents": [idCarpeta]}
 
-    media = MediaFileUpload(nombre)
-    service_drive.obtener_servicio().files().create(body=file_metadata,
-                                     media_body=media,fields='id').execute()
+    media = MediaFileUpload(path)
+    service_drive.obtener_servicio().files().create(
+        body=meta_archivo, media_body=media, fields="id"
+    ).execute()
     print(f"El archivo {nombre} se subió correctamente")
 
-def descargar(file_id, file_name, path):
 
-    request = obtener_servicio().files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fd = fh, request = request)
+def subir()-> None:
+    datos_archivo= elegir_archivo_local()
+    nombre = datos_archivo[1]
+    path= datos_archivo[0]
+    carpeta_id = elegir_carpeta_drive()
+    subir_archivo(path, nombre, carpeta_id )
 
 
-    done= False
-    while not done:
-        status, done = downloader.next_chunk()
-        print(("download progress {0}").format(status.progress()*100))
-    fh.seek(0)
+def elegir_carpeta_local()-> str:
+    path = os.getcwd()
+    path_carpeta = str()
+    entrar = True
+    while entrar:
+        ver_archivos(path)
+        opcion = input("1. Elegir una carpeta/ 2. Entrar a una carpeta/ 3. Atras: ")
+        if opcion == "1":
+            carpeta = input("Elige el nombre de la carpeta: ")
+            path_carpeta = os.path.join(path, carpeta)
+            if os.path.isdir(path_carpeta) == True:
+                entrar = False
+            else:
+                print("El nombre elegido no es una carpeta, elige nuevamente")
+        elif opcion == "2":
+            carpeta = input("Ingrese el nombre de la carpeta: ")
+            if os.path.isdir(os.path.join(path, carpeta)):
+                path = os.path.join(path, carpeta)
+            else:
+                print("El nombre elegido no es una carpeta, elige nuevamente")
+        else:
+            path = os.path.dirname(path)
+    return path_carpeta
 
-    with open (os.path.join(path, file_name), "wb") as f:
-        f.write(fh.read())
-        f.close()
-    
+
+def elegir_archivo_drive()-> tuple:
+    id_carpeta = ROOT_DRIVE
+    id_archivo_subir = str()
+    nombre_archivo = str()
+    seguir = True
+    while seguir:
+        respuesta = ver_archivos_remoto(id_carpeta)
+        opcion = input("1. Elegir un archivo/ 2. Entrar a una carpeta/ 3. Volver al directorio principal: ")
+        if opcion == "1":
+            nombre_archivo = input("Ingrese el nombre del archivo: ")
+            for archivo in respuesta.get("files"):
+                if archivo.get("name") == nombre_archivo and\
+                        archivo.get("mimeType") != "application/vnd.google-apps.folder":
+                    id_archivo_subir = archivo.get("id")
+                    seguir = False
+        elif opcion == "3":
+            id_carpeta = ROOT_DRIVE
+        else:
+            carpeta = input("Elige el nombre de la carpeta: ")
+            for archivo in respuesta.get("files"):
+                if (archivo.get("name") == carpeta
+                        and archivo.get("mimeType") == "application/vnd.google-apps.folder"):
+                    id_carpeta = archivo.get("id")
+    return (id_archivo_subir, nombre_archivo)
+
+
+def descargar_archivo(idArchivo, nombre, path) -> None:
+
+    bytes = io.BytesIO()
+    respuesta = service_drive.obtener_servicio().files().get_media(fileId=idArchivo)
+    descarga = MediaIoBaseDownload(bytes, respuesta)
+
+    completo = False
+    while not completo:
+        estado, completo = descarga.next_chunk()
+        print(f"Descarga del archivo: {estado.progress() * 100}%")
+    bytes.seek(0)
+
+    with open(os.path.join(path, nombre), "wb") as archivo:
+        archivo.write(bytes.read())
+
+
+def descargar()-> None:
+    datos = elegir_archivo_drive()
+    idArchivo = datos[0]
+    nombre = datos[1]
+    path = elegir_carpeta_local()
+    descargar_archivo(idArchivo, nombre, path)
+
+
 def main() -> None:
     selector = str()
     while not selector == "8":
@@ -207,9 +270,9 @@ def main() -> None:
         if selector == "2":
             pass
         if selector == "3":
-            subir_archivo()
+            subir()
         if selector == "4":
-            pass
+            descargar()
         if selector == "5":
             pass
         if selector == "6":
