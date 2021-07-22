@@ -1,9 +1,11 @@
 import os
 import service_drive
 import service_gmail
+import io
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload
 
-EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar
+EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar mas
 
 
 def clear() -> None:
@@ -40,9 +42,22 @@ def root_drive() -> str:  # Esta funcion crea una carpeta tipo root para todos l
     return crear_carpeta_remota("TP_2Algo15", "root")
 
 
+def root_local() -> str:  # Similar para local
+    path = os.getcwd()
+    directorio = os.listdir(path)
+    for archivo in directorio:
+        if archivo == "TP_2Algo15" and os.path.isdir(os.path.join(path, archivo)):
+            return os.path.join(path, archivo)
+    path = os.path.join(path, "TP_2Algo15")
+    os.mkdir(path)
+    return path
+
+
 ROOT_DRIVE = (
     root_drive()
 )  # Variable global porque no tendria sentido salirse de esta carpeta
+
+ROOT_LOCAL = root_local()  # Similar a ROOT_DRIVE
 
 
 def ver_archivos(path: str) -> None:  # Esta parte puede servir para otras funciones.
@@ -51,26 +66,7 @@ def ver_archivos(path: str) -> None:  # Esta parte puede servir para otras funci
         print(archivo)
 
 
-def archivos_local() -> None:
-    selector = str()
-    path = os.getcwd()  # Esto es valido si la carpeta principal es donde esta el .py.
-    while not selector == "salir":
-        clear()
-        ver_archivos(path)
-        selector = input(
-            """
-        Ingrese la carpeta a la que quiera ingresar,
-        atras para volver al directorio anterior,
-        salir para volver al menu principal: """
-        )
-        if selector == "atras":
-            path = os.path.dirname(path)
-        else:
-            if os.path.isdir(os.path.join(path, selector)):
-                path = os.path.join(path, selector)
-
-
-def ver_archivos_remoto(idCarpeta: str) -> None:
+def ver_archivos_remoto(idCarpeta: str) -> dict:  # Similar
     query = f"parents = '{idCarpeta}'"
     field = "files(id, name, mimeType)"
     respuesta = (
@@ -81,34 +77,11 @@ def ver_archivos_remoto(idCarpeta: str) -> None:
     return respuesta
 
 
-def archivos_remoto() -> None:  # ¿Cual es el punto de esta funcion? crear_archivo hace lo mismo
-    idCarpeta = ROOT_DRIVE
-    selector = str()
-    while not selector == "salir":
-        clear()
-        respuesta = ver_archivos_remoto(idCarpeta)
-        selector = input(
-            """
-        Ingrese la carpeta a la que quiera ingresar,
-        root para volver al directorio principal,
-        salir para volver al menu principal: """
-        )
-        if selector == "root":
-            idCarpeta = ROOT_DRIVE
-        else:
-            for archivo in respuesta.get("files"):
-                if (
-                    archivo.get("name") == selector
-                    and archivo.get("mimeType") == "application/vnd.google-apps.folder"
-                ):
-                    idCarpeta = archivo.get("id")
-
-
 def anidar_carpetas_remoto(
     path: str,
 ) -> str:  # Crea carpetas automaticamente si no existen en Drive
     anidacion = []
-    while not os.path.split(path)[1] == os.path.split(os.getcwd())[1]:
+    while not os.path.split(path)[1] == os.path.split(ROOT_LOCAL)[1]:
         anidacion.insert(0, os.path.split(path)[1])
         path = os.path.split(path)[0]
 
@@ -138,32 +111,82 @@ def anidar_carpetas_remoto(
     return idCarpeta
 
 
-def subir_archivo(path: str, nombre, idCarpeta: str) -> None:
-    meta_archivo = {"name": nombre, "parents": [idCarpeta]}
+def subir_archivo(
+    path: str, nombre, idCarpeta: str
+) -> None:  # ¿Deberia comparar archivos aca?
+    if os.path.isdir(path):
+        directorio = os.listdir(path)
+        idCarpetaAux = anidar_carpetas_remoto(path)  # idCarpetaAux variable auxiliar.
+        for archivo in directorio:
+            subir_archivo(os.path.join(path, archivo), archivo, idCarpetaAux)
 
-    media = MediaFileUpload(path)
-    service_drive.obtener_servicio().files().create(
-        body=meta_archivo, media_body=media, fields="id"
-    ).execute()
-    print(f"El archivo {nombre} se subió correctamente")
+    else:
+        meta_archivo = {"name": nombre, "parents": [idCarpeta]}
+
+        media = MediaFileUpload(path)
+        service_drive.obtener_servicio().files().create(
+            body=meta_archivo, media_body=media, fields="id"
+        ).execute()
 
 
-def crear_archivo():  # Muy parecido a archivos_remoto
+def descargar_archivo(
+    idArchivo: str, type: str, nombre: str, path: str
+) -> None:  # ¿Deberia comparar aca?
+    if type == "application/vnd.google-apps.folder":
+        if not os.path.isdir(os.path.join(path, nombre)):
+            os.mkdir(os.path.join(path, nombre))
+
+        query = f"parents = '{idArchivo}'"
+        field = "files(id, name, mimeType)"
+        respuesta = (
+            service_drive.obtener_servicio()
+            .files()
+            .list(q=query, fields=field)
+            .execute()
+        )
+        for archivo in respuesta.get("files"):
+            descargar_archivo(
+                archivo.get("id"),
+                archivo.get("mimeType"),
+                archivo.get("name"),
+                os.path.join(path, nombre),
+            )
+
+    else:
+        bytes = io.BytesIO()
+        respuesta = service_drive.obtener_servicio().files().get_media(fileId=idArchivo)
+        descarga = MediaIoBaseDownload(bytes, respuesta)
+
+        completo = False
+        while not completo:
+            estado, completo = descarga.next_chunk()
+            print(f"Descarga del archivo: {estado.progress() * 100}%")
+        bytes.seek(0)
+
+        with open(os.path.join(path, nombre), "wb") as archivo:
+            archivo.write(bytes.read())
+
+
+def navegador_local():  # ESTA ES LA PRINCIPAL PARA LOCAL
     selector = str()
-    path = os.getcwd()
-    while not selector == "salir":
+    path = ROOT_LOCAL
+    while not selector == "4":
         clear()
         ver_archivos(path)
         selector = input(  # Esto se podria mejorar para que sea mas intuitivo
             """
-        Ingrese la carpeta a donde quiera moverse,
-        crear para crear el archivo en este directorio,
-        atras para volver al directorio anterior,
-        salir para volver al menu principal: """
+        Ingrese la carpeta a la que quiera ingresar,
+        1: Volver al directorio anterior,
+        2: Crear un archivo en este directorio,
+        3: Subir un archivo,
+        4: Volver al menu principal: """
         )
-        if selector == "atras":
-            path = os.path.dirname(path)
-        elif selector == "crear":
+
+        if selector == "1":
+            if not path == ROOT_LOCAL:
+                path = os.path.dirname(path)
+
+        elif selector == "2":
             opcion = input(
                 "\nIngrese 1 para crear una carpeta, 2 para crear un archivo: "
             )
@@ -180,6 +203,7 @@ def crear_archivo():  # Muy parecido a archivos_remoto
                 for extension in range(len(EXTENSIONES_VALIDAS)):
                     print(EXTENSIONES_VALIDAS[extension])
                 extension = input("Ingrese la extension del archivo: ")
+
                 while not extension in EXTENSIONES_VALIDAS:
                     extension = input("Ingrese una extension valida: ")
 
@@ -192,9 +216,41 @@ def crear_archivo():  # Muy parecido a archivos_remoto
                 idCarpeta = anidar_carpetas_remoto(path)
                 subir_archivo(pathArchivo, nombreExtension, idCarpeta)
 
+        elif selector == "3":
+            pass
+
         else:
             if os.path.isdir(os.path.join(path, selector)):
                 path = os.path.join(path, selector)
+
+
+def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
+    idCarpeta = ROOT_DRIVE
+    selector = str()
+    while not selector == "3":
+        clear()
+        respuesta = ver_archivos_remoto(idCarpeta)
+        selector = input(
+            """
+        Ingrese la carpeta a la que quiera ingresar,
+        1 Volver al directorio principal,
+        2 Descargar un archivo,
+        3 Volver al menu principal: """
+        )
+
+        if selector == "1":
+            idCarpeta = ROOT_DRIVE
+
+        elif selector == "2":
+            pass
+
+        else:
+            for archivo in respuesta.get("files"):
+                if (
+                    archivo.get("name") == selector
+                    and archivo.get("mimeType") == "application/vnd.google-apps.folder"
+                ):
+                    idCarpeta = archivo.get("id")
 
 
 def main() -> None:
@@ -213,23 +269,30 @@ def main() -> None:
         8. Salir"""
         )
         selector = input("\nIngrese una opcion: ")
+
         if selector == "1":
             opcion = input("Ingrese 1 para Local, 2 para Remoto: ")
             if opcion == "1":
-                archivos_local()
+                navegador_local()
             if opcion == "2":
-                archivos_remoto()
-        if selector == "2":
-            crear_archivo()
-        if selector == "3":
+                navegador_remoto()
+
+        elif selector == "2":
+            navegador_local()
+
+        elif selector == "3":
             pass
-        if selector == "4":
+
+        elif selector == "4":
             pass
-        if selector == "5":
+
+        elif selector == "5":
             pass
-        if selector == "6":
+
+        elif selector == "6":
             pass
-        if selector == "7":
+
+        elif selector == "7":
             pass
 
 
