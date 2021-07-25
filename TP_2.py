@@ -130,9 +130,9 @@ def subir_archivo(
 
 
 def descargar_archivo(
-    idArchivo: str, type: str, nombre: str, path: str
+    idArchivo: str, tipo: str, nombre: str, path: str
 ) -> None:  # ¿Deberia comparar aca?
-    if type == "application/vnd.google-apps.folder":
+    if tipo == "application/vnd.google-apps.folder":
         if not os.path.isdir(os.path.join(path, nombre)):
             os.mkdir(os.path.join(path, nombre))
 
@@ -191,13 +191,17 @@ def navegador_local():  # ESTA ES LA PRINCIPAL PARA LOCAL
                 "\nIngrese 1 para crear una carpeta, 2 para crear un archivo: "
             )
             if opcion == "1":
-                nombre = input("Ingrese el nombre de la carpeta: ")
+                nombre = input(
+                    "Ingrese el nombre de la carpeta: "
+                )  # ¿Que pasa si agrego extension?
                 os.mkdir(os.path.join(path, nombre))
                 idCarpeta = anidar_carpetas_remoto(path)
                 crear_carpeta_remota(nombre, idCarpeta)
 
             if opcion == "2":
-                nombre = input("Ingrese el nombre del archivo: ")
+                nombre = input(
+                    "Ingrese el nombre del archivo: "
+                )  # ¿Que pasa si agrego extension?
 
                 print("Extensiones validas:")
                 for extension in range(len(EXTENSIONES_VALIDAS)):
@@ -217,7 +221,36 @@ def navegador_local():  # ESTA ES LA PRINCIPAL PARA LOCAL
                 subir_archivo(pathArchivo, nombreExtension, idCarpeta)
 
         elif selector == "3":
-            pass
+            nombre = input("\nIngrese el nombre del archivo o carpeta a subir: ")
+            while not (
+                os.path.isdir(os.path.join(path, nombre))
+                or os.path.isfile(os.path.join(path, nombre))
+            ):
+                nombre = input("Ingrese un archivo valido: ")
+
+            idCarpeta = ROOT_DRIVE
+            opcion = str()
+            while not opcion == "1":  # Aca se repite codigo
+                clear()
+                respuesta = ver_archivos_remoto(idCarpeta)
+                opcion = input(
+                    """
+                Ingrese la carpeta a la que quiera ingresar,
+                1 para subir,
+                2 para volver al directorio principal: """
+                )
+                if opcion == "2":
+                    idCarpeta = ROOT_DRIVE
+                else:
+                    for archivo in respuesta.get("files"):
+                        if (
+                            archivo.get("name") == opcion
+                            and archivo.get("mimeType")
+                            == "application/vnd.google-apps.folder"
+                        ):
+                            idCarpeta = archivo.get("id")
+
+            subir_archivo(os.path.join(path, nombre), nombre, idCarpeta)
 
         else:
             if os.path.isdir(os.path.join(path, selector)):
@@ -242,7 +275,36 @@ def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
             idCarpeta = ROOT_DRIVE
 
         elif selector == "2":
-            pass
+            condicion = False
+            while not condicion:
+                nombre = input(
+                    "\nIngrese el nombre del archivo o carpeta a descargar: "
+                )
+                for archivo in respuesta.get("files"):
+                    if nombre == archivo.get("name"):
+                        idArchivo = archivo.get("id")
+                        tipo = archivo.get("mimeType")
+                        condicion = True
+
+            path = ROOT_LOCAL
+            opcion = str()
+            while not opcion == "1":  # Aca se repite codigo
+                clear()
+                ver_archivos(path)
+                opcion = input(
+                    """
+                    Ingrese la carpeta a la que quiera ingresar,
+                    1 para descargar,
+                    2 para volver al directorio anterior: """
+                )
+                if opcion == "2":
+                    if not path == ROOT_LOCAL:
+                        path = os.path.dirname(path)
+
+                if os.path.isdir(os.path.join(path, opcion)):
+                    path = os.path.join(path, opcion)
+
+            descargar_archivo(idArchivo, tipo, nombre, path)
 
         else:
             for archivo in respuesta.get("files"):
@@ -251,6 +313,24 @@ def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
                     and archivo.get("mimeType") == "application/vnd.google-apps.folder"
                 ):
                     idCarpeta = archivo.get("id")
+
+
+def sincronizar(
+    idCarpeta: str, path: str
+) -> None:  # ¿Que pasa si abro una foto como texto?
+    query = f"parents = {idCarpeta}"
+    field = "files(id, name, mimeType, modifiedTime, md5Cheksum)"
+    respuesta = (
+        service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
+    )
+    directorio = os.listdir(path)
+
+    for archivo in respuesta.get("files"):
+        if (
+            archivo.get("mimeType") == "application/vnd.google-apps.folder"
+            and archivo.get("name") in directorio
+        ):
+            sincronizar(archivo.get("id"), os.path.join(path, archivo.get("name")))
 
 
 def main() -> None:
@@ -281,13 +361,13 @@ def main() -> None:
             navegador_local()
 
         elif selector == "3":
-            pass
+            navegador_local()
 
         elif selector == "4":
-            pass
+            navegador_remoto()
 
         elif selector == "5":
-            pass
+            sincronizar(ROOT_DRIVE, ROOT_LOCAL)
 
         elif selector == "6":
             pass
