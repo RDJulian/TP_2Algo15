@@ -14,6 +14,7 @@ from email.mime.text import MIMEText
 import csv
 import zipfile
 
+
 EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar mas
 
 
@@ -378,6 +379,7 @@ def sincronizar(idCarpeta: str, path: str) -> None:
 
 
 
+
 def mandar_email(receptor: str, asunto: str, cuerpo: str)-> None:
     mensaje_mime = MIMEMultipart()
     mensaje_mime['to'] = receptor
@@ -633,6 +635,7 @@ def asignacion()-> None:
     asignacion_archivos(carpeta_id, carpeta_local)
 
 
+
 def main() -> None:
     selector = str()
     while not selector == "8":
@@ -674,6 +677,7 @@ def main() -> None:
 
         elif selector == "7":
             asignacion()
+
 
 
 main()
