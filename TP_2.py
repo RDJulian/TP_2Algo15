@@ -1,7 +1,10 @@
+from genericpath import getsize
 import os
 import service_drive
 import service_gmail
 import io
+import hashlib
+from datetime import datetime
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaIoBaseDownload
 
@@ -159,8 +162,7 @@ def descargar_archivo(
 
         completo = False
         while not completo:
-            estado, completo = descarga.next_chunk()
-            print(f"Descarga del archivo: {estado.progress() * 100}%")
+            _, completo = descarga.next_chunk()
         bytes.seek(0)
 
         with open(os.path.join(path, nombre), "wb") as archivo:
@@ -315,22 +317,58 @@ def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
                     idCarpeta = archivo.get("id")
 
 
-def sincronizar(
-    idCarpeta: str, path: str
-) -> None:  # ¿Que pasa si abro una foto como texto?
-    query = f"parents = {idCarpeta}"
-    field = "files(id, name, mimeType, modifiedTime, md5Cheksum)"
+def sincronizar(idCarpeta: str, path: str) -> None:
+    query = f"parents = '{idCarpeta}'"
+    field = "files(id, name, mimeType, modifiedTime, md5Checksum)"
     respuesta = (
         service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
     )
     directorio = os.listdir(path)
+    directorioRemoto = []
+    for archivo in respuesta.get("files"):
+        directorioRemoto.append(archivo.get("name"))
 
     for archivo in respuesta.get("files"):
+        pathArchivo = os.path.join(path, archivo.get("name"))
         if (
             archivo.get("mimeType") == "application/vnd.google-apps.folder"
             and archivo.get("name") in directorio
         ):
-            sincronizar(archivo.get("id"), os.path.join(path, archivo.get("name")))
+            sincronizar(archivo.get("id"), pathArchivo)
+        if (
+            archivo.get("name") in directorio
+            and not archivo.get("mimeType") == "application/vnd.google-apps.folder"
+        ):
+            checksumLocal = hashlib.md5(open(f"{pathArchivo}", "rb").read()).hexdigest()
+            checksumRemoto = archivo.get("md5Checksum")
+            if checksumLocal != checksumRemoto:
+                mtimeLocal = datetime.utcfromtimestamp(os.path.getmtime(pathArchivo))
+                mtimeRemoto = datetime.strptime(
+                    archivo.get("modifiedTime"), "%Y-%m-%dT%H:%M:%S.%fZ"
+                )
+                if mtimeRemoto > mtimeLocal:
+                    descargar_archivo(
+                        archivo.get("id"),
+                        archivo.get("mimeType"),
+                        archivo.get("name"),
+                        path,
+                    )
+                else:
+                    service_drive.obtener_servicio().files().delete(
+                        fileId=archivo.get("id")
+                    ).execute()
+                    subir_archivo(pathArchivo, archivo.get("name"), idCarpeta)
+        else:
+            descargar_archivo(
+                archivo.get("id"),
+                archivo.get("mimeType"),
+                archivo.get("name"),
+                path,
+            )
+
+    for archivo in directorio:
+        if not archivo in directorioRemoto:
+            subir_archivo(os.path.join(path, archivo), archivo, idCarpeta)
 
 
 def main() -> None:
