@@ -1,18 +1,16 @@
-from genericpath import getsize
 import os
 import service_drive
 import service_gmail
-import io
-import hashlib
+from hashlib import md5
+from io import BytesIO
 from datetime import datetime
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaIoBaseDownload
-import base64
-from googleapiclient.http import MediaIoBaseUpload
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import csv
-import zipfile
+from csv import reader
+from zipfile import ZipFile
 
 
 EXTENSIONES_VALIDAS = ["txt", "jpg", "mp3", "mp4", "pdf"]  # Se pueden agregar mas
@@ -163,7 +161,7 @@ def descargar_archivo(
             )
 
     else:
-        bytes = io.BytesIO()
+        bytes = BytesIO()
         respuesta = service_drive.obtener_servicio().files().get_media(fileId=idArchivo)
         descarga = MediaIoBaseDownload(bytes, respuesta)
 
@@ -346,7 +344,7 @@ def sincronizar(idCarpeta: str, path: str) -> None:
             archivo.get("name") in directorio
             and not archivo.get("mimeType") == "application/vnd.google-apps.folder"
         ):
-            checksumLocal = hashlib.md5(open(f"{pathArchivo}", "rb").read()).hexdigest()
+            checksumLocal = md5(open(f"{pathArchivo}", "rb").read()).hexdigest()
             checksumRemoto = archivo.get("md5Checksum")
             if checksumLocal != checksumRemoto:
                 mtimeLocal = datetime.utcfromtimestamp(os.path.getmtime(pathArchivo))
@@ -378,125 +376,142 @@ def sincronizar(idCarpeta: str, path: str) -> None:
             subir_archivo(os.path.join(path, archivo), archivo, idCarpeta)
 
 
+def descomprimir(file_zip, directorio, id_carpeta) -> None:
+    path = os.path.join(directorio, file_zip)
+    with ZipFile(path, "r") as zip_ref:
+        zip_ref.extractall(directorio)
+    os.remove(path)
+    carpeta = os.listdir(directorio)
+    for archivo in carpeta:
+        path = os.path.join(directorio, archivo)
+        subir_archivo(path, archivo, id_carpeta)
 
 
-def mandar_email(receptor: str, asunto: str, cuerpo: str)-> None:
+def mandar_email(receptor: str, asunto: str, cuerpo: str) -> None:
     mensaje_mime = MIMEMultipart()
-    mensaje_mime['to'] = receptor
-    mensaje_mime['subject'] = asunto
+    mensaje_mime["to"] = receptor
+    mensaje_mime["subject"] = asunto
     mensaje_mime.attach(MIMEText(cuerpo, "plain"))
-    cadena_bytes = base64.urlsafe_b64encode(mensaje_mime.as_bytes()).decode()
-    service_gmail.obtener_servicio().users().messages().send(userId='me', body={'raw': cadena_bytes}).execute()
-
-
-def buscar(query, label_ids):
-    lista_mensajes = service_gmail.obtener_servicio().users().messages().list(
-        userId="me",
-        labelIds=label_ids,
-        q=query
+    cadena_bytes = urlsafe_b64encode(mensaje_mime.as_bytes()).decode()
+    service_gmail.obtener_servicio().users().messages().send(
+        userId="me", body={"raw": cadena_bytes}
     ).execute()
-    id_mensaje = lista_mensajes.get("messages")
-    return id_mensaje
 
 
-def obtener_datos_mensaje(id_mensaje):
-    datos_mensaje = service_gmail.obtener_servicio().users().messages().get(
-        userId="me",
-        id=id_mensaje,
-    ).execute()
+def buscar(query: str, label_ids: str) -> dict:
+    lista_mensajes = (
+        service_gmail.obtener_servicio()
+        .users()
+        .messages()
+        .list(userId="me", labelIds=label_ids, q=query)
+        .execute()
+    )
+    id_mensajes = lista_mensajes.get("messages")
+    return id_mensajes
+
+
+def obtener_datos_mensaje(id_mensaje: str) -> dict:
+    datos_mensaje = (
+        service_gmail.obtener_servicio()
+        .users()
+        .messages()
+        .get(
+            userId="me",
+            id=id_mensaje,
+        )
+        .execute()
+    )
     return datos_mensaje
 
 
-
-def descargar_adjunto(id_carpeta:str, payload_mensaje:dict, id_mensaje: str) -> str:
-
+def descargar_adjunto(
+    id_carpeta: str, payload_mensaje: dict, id_mensaje: str, path: str
+) -> None:
     if "parts" in payload_mensaje:
         for item in payload_mensaje["parts"]:
             nombre_archivo = item["filename"]
             cuerpo = item["body"]
-            mime_type = item["mimeType"]
             if "attachmentId" in cuerpo:
-                id_adjunto = cuerpo['attachmentId']
-                respuesta = service_gmail.obtener_servicio().users().messages().attachments().get(
-                    userId = "me",
-                    messageId=id_mensaje,
-                    id = id_adjunto
-                ).execute()
+                id_adjunto = cuerpo["attachmentId"]
+                respuesta = (
+                    service_gmail.obtener_servicio()
+                    .users()
+                    .messages()
+                    .attachments()
+                    .get(userId="me", messageId=id_mensaje, id=id_adjunto)
+                    .execute()
+                )
 
-                archivo = base64.urlsafe_b64decode(
+                archivo_adjunto = urlsafe_b64decode(
                     respuesta.get("data").encode("UTF-8")
                 )
-                bytes = io.BytesIO(archivo)
+                bytes = BytesIO(archivo_adjunto)
+                bytes.seek(0)
+                with open(os.path.join(path, nombre_archivo), "wb") as archivo:
+                    archivo.write(bytes.read())
 
-                metadata = {"name": nombre_archivo, "parents": [id_carpeta]}
-
-                media = MediaIoBaseUpload(bytes, mimetype=mime_type)
-
-                archivo = service_drive.obtener_servicio().files().create(
-                    body=metadata, media_body=media, fields="id").execute()
-
-    return(archivo["id"])
+                if nombre_archivo.endswith(".zip"):
+                    descomprimir(nombre_archivo, path, id_carpeta)
+                else:
+                    subir_archivo(
+                        os.path.join(path, nombre_archivo), nombre_archivo, id_carpeta
+                    )
 
 
-
-def docentes_alumnos(path) -> dict:
-    ruta = os.path.join(path, "docentes-alumnos.csv")
-    diccionario = dict()
-    with open(ruta, mode='r', newline="", encoding="UTF-8") as archivo_csv:
-        csv_reader = csv.reader(archivo_csv, delimiter=',')
+def docentes_alumnos(path: str) -> dict:
+    ruta = os.path.join(path, "docente-alumnos.csv")
+    diccDocAlu = dict()
+    with open(ruta, mode="r", newline="", encoding="UTF-8") as archivo_csv:
+        csv_reader = reader(archivo_csv, delimiter=",")
         next(csv_reader)
         for fila in csv_reader:
             docente = fila[0]
             alumno = fila[1]
-            if docente in diccionario:
-                diccionario[docente].append(alumno)
+            if docente in diccDocAlu:
+                diccDocAlu[docente].append(alumno)
             else:
-                diccionario[docente] = [alumno]
-    return diccionario
+                diccDocAlu[docente] = [alumno]
+    return diccDocAlu
 
 
-
-
-def diccionario_alumnos(path) -> dict:
+def diccionario_alumnos(path: str) -> dict:
     ruta = os.path.join(path, "alumnos.csv")
     nombre = 0
     padron = 1
     mail = 2
-    diccionario = dict()
-    with open(ruta, mode='r', newline="", encoding="UTF-8") as archivo_csv:
-        csv_reader = csv.reader(archivo_csv, delimiter=',')
+    diccAlumnos = dict()
+    with open(ruta, mode="r", newline="", encoding="UTF-8") as archivo_csv:
+        csv_reader = reader(archivo_csv, delimiter=",")
         next(csv_reader)
         for fila in csv_reader:
-            diccionario[fila[padron]] = [fila[nombre],fila[mail]]
-    return diccionario
+            diccAlumnos[fila[padron]] = [fila[nombre], fila[mail]]
+    return diccAlumnos
 
 
-def carpetas_docentes(path, carpeta_id)->None:
-    ruta = os.path.join(path,"docentes.csv")
+def carpetas_docentes(path: str, carpeta_id: str) -> None:
+    ruta = os.path.join(path, "docentes.csv")
     nombre = 0
-    diccionario = docentes_alumnos(path)
-    dicc_alumnos = diccionario_alumnos(path)
-    with open(ruta, mode='r', newline="", encoding="UTF-8") as archivo_csv:
-        csv_reader = csv.reader(archivo_csv, delimiter=',')
+    diccDocAlu = docentes_alumnos(path)
+    diccAlumnos = diccionario_alumnos(path)
+    with open(ruta, mode="r", newline="", encoding="UTF-8") as archivo_csv:
+        csv_reader = reader(archivo_csv, delimiter=",")
         next(csv_reader)
         for fila in csv_reader:
             docente = fila[nombre]
-            id = crear_carpeta_remota(docente,carpeta_id)
-            for alumno in diccionario[docente]:
-                crear_carpeta_remota(alumno,id)
-            descargar_archivo(id, "application/vnd.google-apps.folder", docente, path)
+            id = crear_carpeta_remota(docente, carpeta_id)
+            if docente in diccDocAlu.keys():
+                for alumno in diccDocAlu[docente]:
+                    crear_carpeta_remota(alumno, id)
 
     id = crear_carpeta_remota("sin_docente", carpeta_id)
     alumnos_asignados = list()
-    for docente in diccionario:
-        for alumno in diccionario[docente]:
+    for docente in diccDocAlu:
+        for alumno in diccDocAlu[docente]:
             alumnos_asignados.append(alumno)
-    for padron in dicc_alumnos:
-        alumno = dicc_alumnos[padron][0]
+    for padron in diccAlumnos:
+        alumno = diccAlumnos[padron][nombre]
         if alumno not in alumnos_asignados:
             crear_carpeta_remota(alumno, id)
-        descargar_archivo(id, "application/vnd.google-apps.folder", "sin_docente", path)
-
 
 
 def generar_carpetas_evaluacion() -> None:
@@ -517,29 +532,51 @@ def generar_carpetas_evaluacion() -> None:
             if evaluacion:
                 query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{ROOT_DRIVE}'"
                 field = "files(id, name)"
-                respuesta = (service_drive.obtener_servicio().files().list(q=query, fields=field).execute())
+                respuesta = (
+                    service_drive.obtener_servicio()
+                    .files()
+                    .list(q=query, fields=field)
+                    .execute()
+                )
+
+                directorioLocal = os.listdir(ROOT_LOCAL)
                 lista_carpetas = list()
 
                 for carpeta in respuesta.get("files"):
                     lista_carpetas.append(carpeta.get("name"))
-                if asunto not in lista_carpetas:
-                    carpeta_id= crear_carpeta_remota(asunto, ROOT_DRIVE)
-                    descargar_adjunto(carpeta_id,payload_mensaje, mensaje["id"])
-                    descargar_archivo(carpeta_id,"application/vnd.google-apps.folder",asunto,ROOT_LOCAL)
+
+                if (
+                    asunto not in lista_carpetas and asunto not in directorioLocal
+                ):  # Para evitar sobrescribir
                     path = os.path.join(ROOT_LOCAL, asunto)
-                    carpetas_docentes(path, carpeta_id)
+                    os.mkdir(path)
+                    carpeta_id = crear_carpeta_remota(asunto, ROOT_DRIVE)
+
+                    descargar_adjunto(carpeta_id, payload_mensaje, mensaje["id"], path)
+                    if (
+                        "alumnos.csv" in path
+                        and "docentes.csv" in path
+                        and "docente-alumnos.csv" in path
+                    ):
+                        carpetas_docentes(path, carpeta_id)
+                        descargar_archivo(
+                            carpeta_id,
+                            "application/vnd.google-apps.folder",
+                            asunto,
+                            ROOT_LOCAL,
+                        )
 
 
-def validar_entrega(padron,remitente, path) -> str:
+def validar_entrega(padron: str, remitente: str, path: str) -> str:
     alumnos = diccionario_alumnos(path)
     if padron in alumnos:
-        mandar_email( alumnos[padron][1],"Retroalimentación","Entrega OK")
+        mandar_email(alumnos[padron][1], "Retroalimentación", "Entrega OK")
         return "valido"
     else:
-        mandar_email(remitente,"retroalimentación", "Padrón incorrecto")
+        mandar_email(remitente, "Retroalimentación", "Padrón incorrecto")
 
 
-def buscar_carpeta(path, carpeta_id, alumno) -> str:
+def buscar_carpeta(path: str, carpeta_id: str, alumno: str) -> str:
     docentes_alumnos_dicc = docentes_alumnos(path)
     carpeta_docente = str()
     carpeta_alumno_id = list()
@@ -549,24 +586,29 @@ def buscar_carpeta(path, carpeta_id, alumno) -> str:
             if persona == alumno:
                 carpeta = docente
 
-    query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{carpeta_id}'"
+    query = (
+        f"mimeType = 'application/vnd.google-apps.folder' and parents = '{carpeta_id}'"
+    )
     field = "files(id, name)"
     respuesta = (
-        service_drive.obtener_servicio().files().list(q=query, fields=field).execute())
+        service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
+    )
     for archivo in respuesta.get("files"):
         if archivo.get("name") == carpeta:
             carpeta_docente = archivo.get("id")
     query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{carpeta_docente}'"
     field = "files(id, name)"
-    respuesta = (service_drive.obtener_servicio().files().list(q=query, fields=field).execute())
+    respuesta = (
+        service_drive.obtener_servicio().files().list(q=query, fields=field).execute()
+    )
     for carpeta in respuesta.get("files"):
         if carpeta.get("name") == alumno:
-            carpeta_alumno_id= carpeta.get("id")
+            carpeta_alumno_id = carpeta.get("id")
 
-    return(carpeta_alumno_id)
+    return carpeta_alumno_id
 
 
-def buscar_directorio(path, alumno)-> str:
+def buscar_directorio(path: str, alumno: str) -> str:
     docentes_alumnos_dicc = docentes_alumnos(path)
     carpeta = "sin_docente"
     for docente in docentes_alumnos_dicc:
@@ -578,62 +620,54 @@ def buscar_directorio(path, alumno)-> str:
     return carpeta_alumno
 
 
-def descomprimir(file_zip, directorio, id_carpeta, id_archivo) -> None:
-    with zipfile.ZipFile(file_zip,"r") as zip_ref:
-        zip_ref.extractall(directorio)
-    os.remove(file_zip)
-    carpeta = os.listdir(directorio)
-    for archivo in carpeta:
-        path = os.path.join(directorio, archivo)
-        subir_archivo(path, archivo, id_carpeta)
-    service_drive.obtener_servicio().files().delete(fileId=id_archivo).execute()
-
-
-def asignacion_archivos(carpeta_id, path)->None:
-
+def asignacion_archivos(carpeta_id: str, path: str) -> None:
     mensajes = buscar("has:attachment", ["INBOX"])
     for mensaje in mensajes:
         datos_mensaje = obtener_datos_mensaje(mensaje["id"])
         payload_mensaje = datos_mensaje.get("payload")
         entrega = bool()
         remitente = str()
-        nombre_archivo= str()
+        nombre_archivo = str()
         dicc_alumnos = diccionario_alumnos(path)
         if "parts" in payload_mensaje:
             for item in payload_mensaje["parts"]:
                 nombre_archivo = item["filename"]
                 if nombre_archivo.endswith(".zip"):
-                     entrega = True
+                    entrega = True
             if entrega:
                 for item in payload_mensaje["headers"]:
                     if item["name"] == "Return-Path":
                         remitente = item["value"]
                     if item["name"] == "Subject":
                         padron = item["value"]
-                        resultado = validar_entrega(padron,remitente, path)
+                        resultado = validar_entrega(padron, remitente, path)
                         if resultado == "valido":
                             alumno = dicc_alumnos[padron][0]
                             carpeta = buscar_directorio(path, alumno)
-                            if len(os.listdir(carpeta))== 0:
+                            if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
                                 id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
-                                id_archivo = descargar_adjunto(id_carpeta, payload_mensaje, mensaje["id"])
-                                descargar_archivo(id_archivo,"application/zip",nombre_archivo,carpeta)
-                                ruta = os.path.join(carpeta, nombre_archivo)
-                                descomprimir(ruta, carpeta, id_carpeta, id_archivo)
+                                descargar_adjunto(
+                                    id_carpeta, payload_mensaje, mensaje["id"], carpeta
+                                )
 
 
-def asignacion()-> None:
+def asignacion() -> None:
     nombre = input("Escriba el nombre de la evaluación։ ")
     carpeta_local = os.path.join(ROOT_LOCAL, nombre)
-    query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{ROOT_DRIVE}'"
-    field = "files(id, name)"
-    respuesta = (service_drive.obtener_servicio().files().list(q=query, fields=field).execute())
-    carpeta_id = str()
-    for archivo in respuesta.get("files"):
-        if archivo.get("name") == nombre:
-            carpeta_id = archivo.get("id")
-    asignacion_archivos(carpeta_id, carpeta_local)
-
+    if os.path.isdir(carpeta_local):  # No es necesario pero por las dudas
+        query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{ROOT_DRIVE}'"
+        field = "files(id, name)"
+        respuesta = (
+            service_drive.obtener_servicio()
+            .files()
+            .list(q=query, fields=field)
+            .execute()
+        )
+        carpeta_id = str()
+        for archivo in respuesta.get("files"):
+            if archivo.get("name") == nombre:
+                carpeta_id = archivo.get("id")
+        asignacion_archivos(carpeta_id, carpeta_local)
 
 
 def main() -> None:
@@ -677,7 +711,6 @@ def main() -> None:
 
         elif selector == "7":
             asignacion()
-
 
 
 main()
