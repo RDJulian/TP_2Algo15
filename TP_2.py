@@ -817,8 +817,6 @@ def asignacion_archivos(carpeta_id: str, path: str) -> None:
                     descargar_adjunto(
                         id_carpeta, payload_mensaje, mensaje["id"], carpeta
                     )
-                else:
-                    mandar_email(remitente, "Retroalimentación", "Ya hizo una entrega.")
 
 
 def asignacion() -> None:
