@@ -544,6 +544,7 @@ def generar_carpetas_evaluacion() -> None:
 
                 for carpeta in respuesta.get("files"):
                     lista_carpetas.append(carpeta.get("name"))
+
                 if (
                     asunto not in lista_carpetas and asunto not in directorioLocal
                 ):  # Para evitar sobrescribir
@@ -632,7 +633,7 @@ def buscar_directorio(path: str, alumno: str) -> str:
     return carpeta_alumno
 
 
-def lista_mail (path)-> list:
+def lista_mail(path) -> list:
     diccAlumnos = diccionario_alumnos(path)
     lista = list()
     for padron in diccAlumnos:
