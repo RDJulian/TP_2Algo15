@@ -631,9 +631,7 @@ def generar_carpetas_evaluacion() -> None:
                         )
 
 
-def validar_entrega(
-    padron: str, remitente: str, path: str, payload_mensaje: dict
-) -> bool:
+def validar_entrega(padron: str, path: str, payload_mensaje) -> tuple:
     alumnos = diccionario_alumnos(path)
     entrega = False
     mensaje = str()
@@ -651,8 +649,7 @@ def validar_entrega(
             mensaje += "El adjunto no es un archivo zip.\n"
     if padron not in alumnos:
         mensaje += "Padron incorrecto."
-    mandar_email(remitente, "Retroalimentación", mensaje)
-    return entrega
+    return (entrega,mensaje)
 
 
 def buscar_carpeta(path: str, carpeta_id: str, alumno: str) -> str:
@@ -727,15 +724,17 @@ def asignacion_archivos(carpeta_id: str, path: str) -> None:
                     entrega = True
 
         if entrega:
-                valido = validar_entrega(padron, remitente, path, payload_mensaje)
-                if valido:
-                    alumno = dicc_alumnos[padron][0]
-                    carpeta = buscar_directorio(path, alumno)
-                    if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
-                        id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
-                        descargar_adjunto(
-                                id_carpeta, payload_mensaje, mensaje["id"], carpeta
-                            )
+            valido = validar_entrega(padron,  path, payload_mensaje)[0]
+            respuesta = validar_entrega(padron,  path, payload_mensaje)[1]
+            if valido:
+                alumno = dicc_alumnos[padron][0]
+                carpeta = buscar_directorio(path, alumno)
+                if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
+                    mandar_email(remitente, "Retroalimentación", respuesta)
+                    id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
+                    descargar_adjunto(
+                        id_carpeta, payload_mensaje, mensaje["id"], carpeta
+                    )
 
 
 def asignacion() -> None:
