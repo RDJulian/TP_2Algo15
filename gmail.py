@@ -69,6 +69,7 @@ def mensajes() -> None:
         id_mensaje = mensaje["id"]
         datos_mensaje = obtener_datos_mensaje(mensaje["id"])
         payload_mensaje = datos_mensaje.get("payload")
+        print(payload_mensaje)
         for item in payload_mensaje["headers"]:
             if item["name"] == "Return-Path":
                 remitente = item["value"]
