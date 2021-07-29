@@ -644,79 +644,96 @@ def generar_carpetas_evaluacion() -> None:
     POST:
     """
     mensajes = buscar("has:attachment", "INBOX")
-    for mensaje in mensajes:
-        datos_mensaje = obtener_datos_mensaje(mensaje["id"])
-        payload_mensaje = datos_mensaje.get("payload")
-        asunto = str()
-        evaluacion = bool()
-        for item in payload_mensaje["headers"]:
-            if item["name"] == "Subject":
-                asunto = item["value"]
-        if "parts" in payload_mensaje:
-            for item in payload_mensaje["parts"]:
-                nombre_archivo = item["filename"]
-                if nombre_archivo.endswith(".csv"):
-                    evaluacion = True
-            if evaluacion:
-                query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{ROOT_DRIVE}'"
-                field = "files(id, name)"
-                respuesta = (
-                    service_drive.obtener_servicio()
-                    .files()
-                    .list(q=query, fields=field)
-                    .execute()
-                )
+    if type(mensajes) == dict:
+        for mensaje in mensajes:
+            datos_mensaje = obtener_datos_mensaje(mensaje["id"])
+            payload_mensaje = datos_mensaje.get("payload")
+            asunto = str()
+            evaluacion = bool()
+            for item in payload_mensaje["headers"]:
+                if item["name"] == "Subject":
+                    asunto = item["value"]
+            if "parts" in payload_mensaje:
+                for item in payload_mensaje["parts"]:
+                    nombre_archivo = item["filename"]
+                    if nombre_archivo.endswith(".csv"):
+                        evaluacion = True
+                if evaluacion:
+                    query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{ROOT_DRIVE}'"
+                    field = "files(id, name)"
+                    respuesta = (
+                        service_drive.obtener_servicio()
+                        .files()
+                        .list(q=query, fields=field)
+                        .execute()
+                    )
 
-                directorioLocal = os.listdir(ROOT_LOCAL)
-                lista_carpetas = list()
+                    directorioLocal = os.listdir(ROOT_LOCAL)
+                    lista_carpetas = list()
 
-                for carpeta in respuesta.get("files"):
-                    lista_carpetas.append(carpeta.get("name"))
-
-                if (
-                    asunto not in lista_carpetas and asunto not in directorioLocal
-                ):  # Para evitar sobrescribir
-                    path = os.path.join(ROOT_LOCAL, asunto)
-                    os.mkdir(path)
-                    carpeta_id = crear_carpeta_remota(asunto, ROOT_DRIVE)
-
-                    descargar_adjunto(carpeta_id, payload_mensaje, mensaje["id"], path)
-                    directorioExamen = os.listdir(path)
+                    for carpeta in respuesta.get("files"):
+                        lista_carpetas.append(carpeta.get("name"))
 
                     if (
-                        "alumnos.csv" in directorioExamen
-                        and "docentes.csv" in directorioExamen
-                        and "docente-alumnos.csv" in directorioExamen
-                    ):
-                        carpetas_docentes(path, carpeta_id)
-                        descargar_archivo(
-                            carpeta_id,
-                            "application/vnd.google-apps.folder",
-                            asunto,
-                            ROOT_LOCAL,
+                        asunto not in lista_carpetas and asunto not in directorioLocal
+                    ):  # Para evitar sobrescribir
+                        path = os.path.join(ROOT_LOCAL, asunto)
+                        os.mkdir(path)
+                        carpeta_id = crear_carpeta_remota(asunto, ROOT_DRIVE)
+
+                        descargar_adjunto(
+                            carpeta_id, payload_mensaje, mensaje["id"], path
                         )
+                        directorioExamen = os.listdir(path)
+
+                        if (
+                            "alumnos.csv" in directorioExamen
+                            and "docentes.csv" in directorioExamen
+                            and "docente-alumnos.csv" in directorioExamen
+                        ):
+                            carpetas_docentes(path, carpeta_id)
+                            descargar_archivo(
+                                carpeta_id,
+                                "application/vnd.google-apps.folder",
+                                asunto,
+                                ROOT_LOCAL,
+                            )
 
 
-def validar_entrega(padron: str, path: str, payload_mensaje: dict) -> tuple:
-    """PRE: Ingresa el padron del alumno, el path de la carpeta del examen y el payload del mail.
+def validar_entrega(
+    padron: str, alumno: str, path: str, payload_mensaje: dict
+) -> tuple:
+    """PRE: Ingresa el padron del alumno, el nombre, el path de la carpeta del examen y el payload del mail.
     POST: Devuelve una tupla con un bool sobre la entrega y el mensaje a reenviar.
     """
     alumnos = diccionario_alumnos(path)
     entrega = False
     mensaje = str()
     archivos = str()
+    adjunto = 0
     if "parts" in payload_mensaje:
+        for item in payload_mensaje["parts"]:
+            cuerpo = item["body"]
+            if "attachmentId" in cuerpo:
+                adjunto += 1
         for item in payload_mensaje["parts"]:
             nombre_archivo = item["filename"]
             archivos += nombre_archivo
-            if nombre_archivo.endswith(".zip") and padron in alumnos:
-                mensaje = "Entrega OK"
+            if (
+                nombre_archivo.endswith(".zip")
+                and padron in alumnos.keys()
+                and alumnos[padron][0] == alumno
+                and adjunto == 1
+            ):
+                mensaje = "Entrega OK."
                 entrega = True
-        if len(archivos) == 0:
+        if adjunto == 0:
             mensaje += "No tiene adjunto.\n"
-        elif not ".zip" in archivos:
+        elif adjunto == 1 and not ".zip" in archivos:
             mensaje += "El adjunto no es un archivo zip.\n"
-    if padron not in alumnos:
+        elif adjunto > 1:
+            mensaje += "Tiene mas de un adjunto.\n"
+    if padron not in alumnos.keys() or alumnos[padron][0] != alumno:
         mensaje += "Padron incorrecto."
     return (entrega, mensaje)
 
@@ -790,33 +807,38 @@ def asignacion_archivos(carpeta_id: str, path: str) -> None:
     mensajes = buscar("", "INBOX")
     dicc_alumnos = diccionario_alumnos(path)
     mail_alumnos = lista_mail(path)
-    for mensaje in mensajes:
-        datos_mensaje = obtener_datos_mensaje(mensaje["id"])
-        payload_mensaje = datos_mensaje.get("payload")
-        entrega = bool()
-        remitente = str()
-        padron = str()
-        for item in payload_mensaje["headers"]:
-            if item["name"] == "Subject":
-                padron = item["value"]
-            if item["name"] == "From":
-                remitente = item["value"].split()[-1]
-                mail = remitente[1:-1]
-                if mail in mail_alumnos:
-                    entrega = True
+    if type(mensajes) == dict:
+        for mensaje in mensajes:
+            datos_mensaje = obtener_datos_mensaje(mensaje["id"])
+            payload_mensaje = datos_mensaje.get("payload")
+            entrega = bool()
+            remitente = str()
+            padron = str()
+            mail = str()
+            for item in payload_mensaje["headers"]:
+                if item["name"] == "Subject":
+                    padron = item["value"]
+                if item["name"] == "From":
+                    remitente = item["value"].split()[-1]
+                    mail = remitente[1:-1]
+                    if mail in mail_alumnos:
+                        entrega = True
 
-        if entrega:
-            valido = validar_entrega(padron, path, payload_mensaje)[0]
-            respuesta = validar_entrega(padron, path, payload_mensaje)[1]
-            if valido:
-                alumno = dicc_alumnos[padron][0]
-                carpeta = buscar_directorio(path, alumno)
-                if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
-                    mandar_email(remitente, "Retroalimentación", respuesta)
-                    id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
-                    descargar_adjunto(
-                        id_carpeta, payload_mensaje, mensaje["id"], carpeta
-                    )
+            if entrega:
+                for item in dicc_alumnos:  # item variable auxiliar.
+                    if dicc_alumnos[item][1] == mail:
+                        alumno = dicc_alumnos[item][0]
+                        carpeta = buscar_directorio(path, alumno)
+                        if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
+                            valido, respuesta = validar_entrega(
+                                padron, alumno, path, payload_mensaje
+                            )
+                            mandar_email(remitente, "Retroalimentación", respuesta)
+                            if valido:
+                                id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
+                                descargar_adjunto(
+                                    id_carpeta, payload_mensaje, mensaje["id"], carpeta
+                                )
 
 
 def asignacion() -> None:
