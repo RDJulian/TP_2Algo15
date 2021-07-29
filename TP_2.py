@@ -505,9 +505,9 @@ def mandar_email(receptor: str, asunto: str, cuerpo: str) -> None:
     ).execute()
 
 
-def buscar(query: str, label_ids: str) -> dict:
+def buscar(query: str, label_ids: str) -> list:
     """PRE: Ingresa las condiciones de query y label_ids.
-    POST: Devuelve un diccionario con las respuestas matcheadas.
+    POST: Devuelve una lista con las respuestas matcheadas.
     """
     lista_mensajes = (
         service_gmail.obtener_servicio()
@@ -644,7 +644,7 @@ def generar_carpetas_evaluacion() -> None:
     POST:
     """
     mensajes = buscar("has:attachment", "INBOX")
-    if type(mensajes) == dict:
+    if type(mensajes) == list:
         for mensaje in mensajes:
             datos_mensaje = obtener_datos_mensaje(mensaje["id"])
             payload_mensaje = datos_mensaje.get("payload")
@@ -807,7 +807,7 @@ def asignacion_archivos(carpeta_id: str, path: str) -> None:
     mensajes = buscar("", "INBOX")
     dicc_alumnos = diccionario_alumnos(path)
     mail_alumnos = lista_mail(path)
-    if type(mensajes) == dict:
+    if type(mensajes) == list:
         for mensaje in mensajes:
             datos_mensaje = obtener_datos_mensaje(mensaje["id"])
             payload_mensaje = datos_mensaje.get("payload")
