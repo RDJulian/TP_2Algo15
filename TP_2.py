@@ -47,6 +47,9 @@ CARACTERES_ILEGALES = [
 
 
 def clear() -> None:
+    """PRE:
+    POST:
+    """
     if os.name == "nt":
         os.system("cls")
     else:
@@ -54,6 +57,9 @@ def clear() -> None:
 
 
 def crear_carpeta_remota(nombre: str, idCarpeta: str) -> str:
+    """PRE: Ingresa el nombre de la carpeta y el id del parent.
+    POST: Genera la carpeta y devuelve el id.
+    """
     metaCarpeta = {
         "name": f"{nombre}",
         "mimeType": "application/vnd.google-apps.folder",
@@ -69,6 +75,9 @@ def crear_carpeta_remota(nombre: str, idCarpeta: str) -> str:
 
 
 def root_drive() -> str:  # Esta funcion crea una carpeta tipo root para todos los archivos del trabajo
+    """PRE:
+    POST: Devuelve el id de la carpeta.
+    """
     query = "mimeType = 'application/vnd.google-apps.folder' and parents = 'root'"
     field = "files(id, name)"
     respuesta = (
@@ -81,6 +90,9 @@ def root_drive() -> str:  # Esta funcion crea una carpeta tipo root para todos l
 
 
 def root_local() -> str:  # Similar para local
+    """PRE:
+    POST: Devuelve el path de la carpeta.
+    """
     path = os.getcwd()
     directorio = os.listdir(path)
     for archivo in directorio:
@@ -99,12 +111,18 @@ ROOT_LOCAL = root_local()  # Similar a ROOT_DRIVE
 
 
 def ver_archivos(path: str) -> None:
+    """PRE: Ingresa el path de la carpeta a mostrar.
+    POST:
+    """
     directorio = os.listdir(path)
     for archivo in directorio:
         print(archivo)
 
 
 def ver_archivos_remoto(idCarpeta: str) -> dict:
+    """PRE: Ingresa el id de la carpeta a mostrar.
+    POST: Devuelve la respuesta de la API.
+    """
     query = f"parents = '{idCarpeta}'"
     field = "files(id, name, mimeType)"
     respuesta = (
@@ -118,6 +136,9 @@ def ver_archivos_remoto(idCarpeta: str) -> dict:
 def anidar_carpetas_remoto(
     path: str,
 ) -> str:  # Crea carpetas automaticamente si no existen en Drive
+    """PRE: Ingresa el path de la carpeta objetivo.
+    POST: Devuelve el id de la carpeta objetivo creada en Drive.
+    """
     anidacion = []
     while not os.path.split(path)[1] == os.path.split(ROOT_LOCAL)[1]:
         anidacion.insert(0, os.path.split(path)[1])
@@ -149,7 +170,10 @@ def anidar_carpetas_remoto(
     return idCarpeta
 
 
-def subir_archivo(path: str, nombre, idCarpeta: str) -> None:
+def subir_archivo(path: str, nombre: str, idCarpeta: str) -> None:
+    """PRE: Ingresa el path entero, el nombre del archivo y el id de la carpeta objetivo.
+    POST:
+    """
     if os.path.isdir(path):
         directorio = os.listdir(path)
         idCarpetaAux = anidar_carpetas_remoto(path)  # idCarpetaAux variable auxiliar.
@@ -166,6 +190,9 @@ def subir_archivo(path: str, nombre, idCarpeta: str) -> None:
 
 
 def descargar_archivo(idArchivo: str, tipo: str, nombre: str, path: str) -> None:
+    """PRE: Ingresa el id del archivo, su mimeType, el nombre y el path objetivo.
+    POST:
+    """
     if tipo == "application/vnd.google-apps.folder":
         if not os.path.isdir(os.path.join(path, nombre)):
             os.mkdir(os.path.join(path, nombre))
@@ -201,6 +228,9 @@ def descargar_archivo(idArchivo: str, tipo: str, nombre: str, path: str) -> None
 
 
 def chequeo_nombre(nombre: str) -> bool:
+    """PRE: Ingresa el nombre de un archivo.
+    POST: Devuelve un bool dependiendo de si contiene un caracter ilegal.
+    """
     for caracter in CARACTERES_ILEGALES:
         if caracter in nombre:
             return False
@@ -208,6 +238,9 @@ def chequeo_nombre(nombre: str) -> bool:
 
 
 def navegador_local() -> None:  # ESTA ES LA PRINCIPAL PARA LOCAL
+    """PRE:
+    POST:
+    """
     selector = str()
     path = ROOT_LOCAL
     while not selector == "4":
@@ -302,10 +335,10 @@ def navegador_local() -> None:  # ESTA ES LA PRINCIPAL PARA LOCAL
                     "Se encontro un archivo con el mismo nombre, ¿quiere sobrescribirlo? si/no: "
                 )
                 if decision == "si":
-                    subir_archivo(os.path.join(path, nombre), nombre, idCarpeta)
                     service_drive.obtener_servicio().files().delete(
                         fileId=archivoExistente
                     ).execute()
+                    subir_archivo(os.path.join(path, nombre), nombre, idCarpeta)
             else:
                 subir_archivo(os.path.join(path, nombre), nombre, idCarpeta)
 
@@ -315,6 +348,9 @@ def navegador_local() -> None:  # ESTA ES LA PRINCIPAL PARA LOCAL
 
 
 def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
+    """PRE:
+    POST:
+    """
     idCarpeta = ROOT_DRIVE
     selector = str()
     while not selector == "3":
@@ -385,6 +421,9 @@ def navegador_remoto() -> None:  # ESTA ES LA PRINCIPAL PARA REMOTO
 
 
 def sincronizar(idCarpeta: str, path: str) -> None:
+    """PRE: Ingresa el id de carpeta y el path a comparar.
+    POST:
+    """
     query = f"parents = '{idCarpeta}'"
     field = "files(id, name, mimeType, modifiedTime, md5Checksum)"
     respuesta = (
@@ -439,6 +478,9 @@ def sincronizar(idCarpeta: str, path: str) -> None:
 
 
 def descomprimir(file_zip: str, directorio: str, id_carpeta: str) -> None:
+    """PRE: Ingresa el nombre del .zip, el directorio y el id de la carpeta a subir.
+    POST:
+    """
     path = os.path.join(directorio, file_zip)
     with ZipFile(path, "r") as zip_ref:
         zip_ref.extractall(directorio)
@@ -450,6 +492,9 @@ def descomprimir(file_zip: str, directorio: str, id_carpeta: str) -> None:
 
 
 def mandar_email(receptor: str, asunto: str, cuerpo: str) -> None:
+    """PRE: Ingresa el mail receptor, el asunto y el cuerpo del mail.
+    POST:
+    """
     mensaje_mime = MIMEMultipart()
     mensaje_mime["to"] = receptor
     mensaje_mime["subject"] = asunto
@@ -461,6 +506,9 @@ def mandar_email(receptor: str, asunto: str, cuerpo: str) -> None:
 
 
 def buscar(query: str, label_ids: str) -> dict:
+    """PRE: Ingresa las condiciones de query y label_ids.
+    POST: Devuelve un diccionario con las respuestas matcheadas.
+    """
     lista_mensajes = (
         service_gmail.obtener_servicio()
         .users()
@@ -473,6 +521,9 @@ def buscar(query: str, label_ids: str) -> dict:
 
 
 def obtener_datos_mensaje(id_mensaje: str) -> dict:
+    """PRE: Ingresa el id del mail.
+    POST: Devuelve un diccionario con los datos del mail.
+    """
     datos_mensaje = (
         service_gmail.obtener_servicio()
         .users()
@@ -489,6 +540,9 @@ def obtener_datos_mensaje(id_mensaje: str) -> dict:
 def descargar_adjunto(
     id_carpeta: str, payload_mensaje: dict, id_mensaje: str, path: str
 ) -> None:
+    """PRE: Ingresa el id del mail, el id y el path de las carpetas objetivo y el payload del mensaje.
+    POST:
+    """
     if "parts" in payload_mensaje:
         for item in payload_mensaje["parts"]:
             nombre_archivo = item["filename"]
@@ -521,6 +575,9 @@ def descargar_adjunto(
 
 
 def docentes_alumnos(path: str) -> dict:
+    """PRE: Ingresa el path de la carpeta del examen.
+    POST: Devuelve un diccionario con los datos del .csv.
+    """
     ruta = os.path.join(path, "docente-alumnos.csv")
     diccDocAlu = dict()
     with open(ruta, mode="r", newline="", encoding="UTF-8") as archivo_csv:
@@ -537,6 +594,9 @@ def docentes_alumnos(path: str) -> dict:
 
 
 def diccionario_alumnos(path: str) -> dict:
+    """PRE: Ingresa el path de la carpeta del examen.
+    POST: Devuelve un diccionario con los datos del .csv.
+    """
     ruta = os.path.join(path, "alumnos.csv")
     nombre = 0
     padron = 1
@@ -551,6 +611,9 @@ def diccionario_alumnos(path: str) -> dict:
 
 
 def carpetas_docentes(path: str, carpeta_id: str) -> None:
+    """PRE: Ingresa el path y el id de las carpetas del examen.
+    POST:
+    """
     ruta = os.path.join(path, "docentes.csv")
     nombre = 0
     diccDocAlu = docentes_alumnos(path)
@@ -577,6 +640,9 @@ def carpetas_docentes(path: str, carpeta_id: str) -> None:
 
 
 def generar_carpetas_evaluacion() -> None:
+    """PRE:
+    POST:
+    """
     mensajes = buscar("has:attachment", "INBOX")
     for mensaje in mensajes:
         datos_mensaje = obtener_datos_mensaje(mensaje["id"])
@@ -631,9 +697,10 @@ def generar_carpetas_evaluacion() -> None:
                         )
 
 
-def validar_entrega(
-    padron: str, remitente: str, path: str, payload_mensaje: dict
-) -> bool:
+def validar_entrega(padron: str, path: str, payload_mensaje: dict) -> tuple:
+    """PRE: Ingresa el padron del alumno, el path de la carpeta del examen y el payload del mail.
+    POST: Devuelve una tupla con un bool sobre la entrega y el mensaje a reenviar.
+    """
     alumnos = diccionario_alumnos(path)
     entrega = False
     mensaje = str()
@@ -651,11 +718,13 @@ def validar_entrega(
             mensaje += "El adjunto no es un archivo zip.\n"
     if padron not in alumnos:
         mensaje += "Padron incorrecto."
-    mandar_email(remitente, "Retroalimentación", mensaje)
-    return entrega
+    return (entrega, mensaje)
 
 
 def buscar_carpeta(path: str, carpeta_id: str, alumno: str) -> str:
+    """PRE: Ingresa el path y el id de las carpetas del examen, y el nombre del alumno.
+    POST: Devuelve el id de la carpeta del alumno.
+    """
     docentes_alumnos_dicc = docentes_alumnos(path)
     carpeta_docente = str()
     carpeta_alumno_id = list()
@@ -675,6 +744,7 @@ def buscar_carpeta(path: str, carpeta_id: str, alumno: str) -> str:
     for archivo in respuesta.get("files"):
         if archivo.get("name") == carpeta:
             carpeta_docente = archivo.get("id")
+
     query = f"mimeType = 'application/vnd.google-apps.folder' and parents = '{carpeta_docente}'"
     field = "files(id, name)"
     respuesta = (
@@ -688,6 +758,9 @@ def buscar_carpeta(path: str, carpeta_id: str, alumno: str) -> str:
 
 
 def buscar_directorio(path: str, alumno: str) -> str:
+    """PRE: Ingresa el path de la carpeta del examen y el nombre del alumno.
+    POST: Devuelve el path de la carpeta del alumno.
+    """
     docentes_alumnos_dicc = docentes_alumnos(path)
     carpeta = "sin_docente"
     for docente in docentes_alumnos_dicc:
@@ -700,6 +773,9 @@ def buscar_directorio(path: str, alumno: str) -> str:
 
 
 def lista_mail(path: str) -> list:
+    """PRE: Ingresa el path de la carpeta del examen.
+    POST: Devuelve una lista con todos los mails de los alumnos.
+    """
     diccAlumnos = diccionario_alumnos(path)
     lista = list()
     for padron in diccAlumnos:
@@ -708,6 +784,9 @@ def lista_mail(path: str) -> list:
 
 
 def asignacion_archivos(carpeta_id: str, path: str) -> None:
+    """PRE: Ingresa el id y el path de las carpetas del examen.
+    POST:
+    """
     mensajes = buscar("", "INBOX")
     dicc_alumnos = diccionario_alumnos(path)
     mail_alumnos = lista_mail(path)
@@ -716,28 +795,36 @@ def asignacion_archivos(carpeta_id: str, path: str) -> None:
         payload_mensaje = datos_mensaje.get("payload")
         entrega = bool()
         remitente = str()
+        padron = str()
         for item in payload_mensaje["headers"]:
-            if item["name"] == "Return-Path":
-                mail = item["value"]
-                remitente = mail[1:-1]
-                if remitente in mail_alumnos:
+            if item["name"] == "Subject":
+                padron = item["value"]
+            if item["name"] == "From":
+                remitente = item["value"].split()[-1]
+                mail = remitente[1:-1]
+                if mail in mail_alumnos:
                     entrega = True
 
-            if entrega:
-                if item["name"] == "Subject":
-                    padron = item["value"]
-                    valido = validar_entrega(padron, remitente, path, payload_mensaje)
-                    if valido:
-                        alumno = dicc_alumnos[padron][0]
-                        carpeta = buscar_directorio(path, alumno)
-                        if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
-                            id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
-                            descargar_adjunto(
-                                id_carpeta, payload_mensaje, mensaje["id"], carpeta
-                            )
+        if entrega:
+            valido = validar_entrega(padron, path, payload_mensaje)[0]
+            respuesta = validar_entrega(padron, path, payload_mensaje)[1]
+            if valido:
+                alumno = dicc_alumnos[padron][0]
+                carpeta = buscar_directorio(path, alumno)
+                if len(os.listdir(carpeta)) == 0:  # Si no hizo una entrega
+                    mandar_email(remitente, "Retroalimentación", respuesta)
+                    id_carpeta = buscar_carpeta(path, carpeta_id, alumno)
+                    descargar_adjunto(
+                        id_carpeta, payload_mensaje, mensaje["id"], carpeta
+                    )
+                else:
+                    mandar_email(remitente, "Retroalimentación", "Ya hizo una entrega.")
 
 
 def asignacion() -> None:
+    """PRE:
+    POST:
+    """
     nombre = input("Escriba el nombre de la evaluación։ ")
     carpeta_local = os.path.join(ROOT_LOCAL, nombre)
     if os.path.isdir(carpeta_local):  # No es necesario pero por las dudas
@@ -757,6 +844,9 @@ def asignacion() -> None:
 
 
 def main() -> None:
+    """PRE:
+    POST:
+    """
     selector = str()
     while not selector == "8":
         clear()
